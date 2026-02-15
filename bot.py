@@ -7,8 +7,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFil
 from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
-BOT_TOKEN = "7693531089:AAFoM4HcUq8DY3pRZv97H_4pzL6gtEyGYhU"  # ВАШ ТОКЕН
-APP_URL = "https://t.me/VipLover_robot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ
+BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
+APP_URL = "t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 # ======================================================
 
