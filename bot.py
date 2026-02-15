@@ -1,14 +1,15 @@
 import asyncio
 import logging
+import json
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, WebAppInfo
 from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
-APP_URL = "t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ
+APP_URL = "https://t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ (исправлено на https)
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 # ======================================================
 
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Простое хранилище рефералов (в памяти)
+# Для продакшена лучше использовать Redis или БД
+referrals_db = {}
 
 def get_user_greeting(user: types.User) -> str:
     """
@@ -58,14 +63,13 @@ def get_user_greeting(user: types.User) -> str:
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
     """
-    Создает клавиатуру с одной зеленой кнопкой
+    Создает клавиатуру с кнопкой для открытия Web App
     """
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text="Начать зарабатывать", 
-                url=APP_URL,
-                style="success"  # 🟢 Зеленый цвет
+                text="🚀 Начать зарабатывать", 
+                web_app=WebAppInfo(url=APP_URL)  # Используем web_app вместо url
             )]
         ]
     )
@@ -74,18 +78,61 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     """
-    Обработчик команды /start
+    Обработчик команды /start с поддержкой реферальных ссылок
     """
     try:
         user = message.from_user
+        args = message.text.split()
+        
+        # Проверяем, есть ли реферальный параметр
+        referrer_id = None
+        if len(args) > 1 and args[1].startswith('ref_'):
+            referrer_id = args[1].replace('ref_', '')
+            logger.info(f"Пользователь {user.id} перешел по реферальной ссылке от {referrer_id}")
+            
+            # Сохраняем информацию о реферале
+            if referrer_id not in referrals_db:
+                referrals_db[referrer_id] = []
+            
+            # Проверяем, не был ли уже этот пользователь приглашен
+            if user.id not in referrals_db[referrer_id]:
+                referrals_db[referrer_id].append(user.id)
+                
+                # Можно отправить уведомление рефереру
+                try:
+                    await bot.send_message(
+                        chat_id=int(referrer_id),
+                        text=f"🎉 По вашей реферальной ссылке зарегистрировался новый пользователь!\n"
+                             f"👤 Имя: {user.first_name}\n"
+                             f"📊 Всего приглашено: {len(referrals_db[referrer_id])}"
+                    )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить уведомление рефереру: {e}")
+        
         time_greeting, display_name = get_user_greeting(user)
         
-        # Формируем текст сообщения
-        caption_text = (
-            f"{time_greeting}, {display_name}! 👋\n\n"
-            f"Это бот с заданиями для заработка от 5000 рублей в день.\n\n"
-            f"Выполняйте простые задания за реальные деньги."
-        )
+        # Формируем текст сообщения в зависимости от наличия рефералки
+        if referrer_id:
+            caption_text = (
+                f"{time_greeting}, {display_name}! 👋\n\n"
+                f"✨ Вы перешли по реферальной ссылке!\n"
+                f"💰 В приложении вас ждет бонус за регистрацию.\n\n"
+                f"Выполняйте простые задания и зарабатывайте реальные деньги.\n\n"
+                f"👇 Нажмите кнопку ниже, чтобы открыть приложение:"
+            )
+        else:
+            # Создаем реферальный код для пользователя
+            ref_code = f"ref_{user.id}"
+            
+            caption_text = (
+                f"{time_greeting}, {display_name}! 👋\n\n"
+                f"💰 Это бот с заданиями для заработка от 5000 рублей в день.\n\n"
+                f"Выполняйте простые задания и получайте реальные деньги.\n\n"
+                f"🔗 **Ваша реферальная ссылка:**\n"
+                f"`https://t.me/{bot.username}?start={ref_code}`\n\n"
+                f"Приглашайте друзей и получайте бонусы!\n\n"
+                f"👇 Нажмите кнопку ниже, чтобы открыть приложение:"
+            )
         
         # Пробуем отправить фото
         try:
@@ -94,7 +141,7 @@ async def cmd_start(message: types.Message):
                 photo=photo,
                 caption=caption_text,
                 reply_markup=get_main_keyboard(),
-                parse_mode=ParseMode.HTML
+                parse_mode=ParseMode.MARKDOWN
             )
         except Exception as e:
             logger.warning(f"Не удалось отправить фото: {e}")
@@ -102,12 +149,88 @@ async def cmd_start(message: types.Message):
             await message.answer(
                 text=caption_text,
                 reply_markup=get_main_keyboard(),
-                parse_mode=ParseMode.HTML
+                parse_mode=ParseMode.MARKDOWN
             )
             
     except Exception as e:
         logger.error(f"Ошибка в обработчике /start: {e}")
         await message.answer("Произошла ошибка. Попробуйте позже.")
+
+@dp.message(Command("refs"))
+async def cmd_refs(message: types.Message):
+    """
+    Команда для просмотра количества рефералов
+    """
+    try:
+        user_id = str(message.from_user.id)
+        ref_count = len(referrals_db.get(user_id, []))
+        
+        # Создаем реферальную ссылку
+        ref_code = f"ref_{user_id}"
+        ref_link = f"https://t.me/{bot.username}?start={ref_code}"
+        
+        await message.answer(
+            f"📊 **Статистика рефералов**\n\n"
+            f"👥 Приглашено друзей: **{ref_count}**\n"
+            f"🔗 Ваша реферальная ссылка:\n"
+            f"`{ref_link}`\n\n"
+            f"✨ Приглашайте друзей и получайте бонусы в приложении!",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в команде /refs: {e}")
+        await message.answer("Произошла ошибка. Попробуйте позже.")
+
+@dp.message(lambda message: message.web_app_data)
+async def handle_web_app_data(message: types.Message):
+    """
+    Обработчик данных из Web App приложения
+    """
+    try:
+        data = json.loads(message.web_app_data.data)
+        user_id = message.from_user.id
+        action = data.get('action')
+        
+        logger.info(f"Получены данные из Web App от {user_id}: {action}")
+        
+        if action == 'check_subscription':
+            # Здесь можно добавить реальную проверку подписки на каналы
+            channel = data.get('channel')
+            # Пока просто возвращаем успех
+            await message.answer(json.dumps({
+                'status': 'success',
+                'subscribed': True
+            }))
+            
+        elif action == 'get_referrals':
+            # Отправляем количество рефералов
+            ref_count = len(referrals_db.get(str(user_id), []))
+            await message.answer(json.dumps({
+                'status': 'success',
+                'referrals': ref_count
+            }))
+            
+        elif action == 'withdraw':
+            # Обработка вывода средств
+            amount = data.get('amount')
+            method = data.get('method')
+            details = data.get('details')
+            
+            # Здесь можно добавить логику вывода
+            logger.info(f"Запрос на вывод от {user_id}: {amount} руб, метод: {method}")
+            
+            await message.answer(json.dumps({
+                'status': 'success',
+                'message': 'Запрос на вывод принят'
+            }))
+            
+    except Exception as e:
+        logger.error(f"Ошибка обработки данных из Web App: {e}")
+        await message.answer(json.dumps({
+            'status': 'error',
+            'message': str(e)
+        }))
 
 @dp.message()
 async def handle_all_messages(message: types.Message):
@@ -115,7 +238,8 @@ async def handle_all_messages(message: types.Message):
     Обработчик всех остальных сообщений
     """
     await message.answer(
-        "Используйте команду /start для начала работы"
+        "Используйте команду /start для начала работы\n"
+        "Или /refs для просмотра статистики рефералов"
     )
 
 async def main():
@@ -124,6 +248,7 @@ async def main():
     """
     logger.info(f"Бот запущен!")
     logger.info(f"URL приложения: {APP_URL}")
+    logger.info(f"Username бота: @{bot.username}")
     
     # Запускаем поллинг
     try:
