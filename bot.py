@@ -24,7 +24,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open('image.jpg', 'rb') as photo:
         await update.message.reply_photo(
             photo=photo,
-            caption="Привет, {first_name}! 👋\n\n"
+            caption="Привет, {user.first_name}! 👋\n\n"
                    "Это бот с заданиями для заработка от 5000 рублей в день. "
                    "Выполняйте простые задания за реальные деньги.\n\n"
                    ,
