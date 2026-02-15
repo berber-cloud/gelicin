@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
-APP_URL = "https://t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ (исправлено на https)
+APP_URL = "https://t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 # ======================================================
 
@@ -25,19 +25,16 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Простое хранилище рефералов (в памяти)
-# Для продакшена лучше использовать Redis или БД
 referrals_db = {}
 
 def get_user_greeting(user: types.User) -> str:
     """
     Формирует приветствие в зависимости от времени суток и имени пользователя
     """
-    # Получаем имя пользователя
     first_name = user.first_name or ""
     last_name = user.last_name or ""
     username = user.username
     
-    # Формируем отображаемое имя
     if username:
         display_name = f"@{username}"
     elif first_name and last_name:
@@ -47,7 +44,6 @@ def get_user_greeting(user: types.User) -> str:
     else:
         display_name = "друг"
     
-    # Определяем время суток
     hour = datetime.now().hour
     
     if 5 <= hour < 12:
@@ -69,7 +65,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(
                 text="🚀 Начать зарабатывать", 
-                web_app=WebAppInfo(url=APP_URL)  # Используем web_app вместо url
+                web_app=WebAppInfo(url=APP_URL)
             )]
         ]
     )
@@ -90,28 +86,32 @@ async def cmd_start(message: types.Message):
             referrer_id = args[1].replace('ref_', '')
             logger.info(f"Пользователь {user.id} перешел по реферальной ссылке от {referrer_id}")
             
-            # Сохраняем информацию о реферале
             if referrer_id not in referrals_db:
                 referrals_db[referrer_id] = []
             
-            # Проверяем, не был ли уже этот пользователь приглашен
             if user.id not in referrals_db[referrer_id]:
                 referrals_db[referrer_id].append(user.id)
                 
-                # Можно отправить уведомление рефереру
+                # Получаем информацию о боте для реферальной ссылки
+                bot_info = await bot.get_me()
+                
                 try:
                     await bot.send_message(
                         chat_id=int(referrer_id),
                         text=f"🎉 По вашей реферальной ссылке зарегистрировался новый пользователь!\n"
                              f"👤 Имя: {user.first_name}\n"
-                             f"📊 Всего приглашено: {len(referrals_db[referrer_id])}"
+                             f"📊 Всего приглашено: {len(referrals_db[referrer_id])}\n\n"
+                             f"🔗 Ваша реферальная ссылка:\n"
+                             f"https://t.me/{bot_info.username}?start=ref_{referrer_id}"
                     )
                 except Exception as e:
                     logger.error(f"Не удалось отправить уведомление рефереру: {e}")
         
         time_greeting, display_name = get_user_greeting(user)
         
-        # Формируем текст сообщения в зависимости от наличия рефералки
+        # Получаем информацию о боте для реферальной ссылки
+        bot_info = await bot.get_me()
+        
         if referrer_id:
             caption_text = (
                 f"{time_greeting}, {display_name}! 👋\n\n"
@@ -129,12 +129,11 @@ async def cmd_start(message: types.Message):
                 f"💰 Это бот с заданиями для заработка от 5000 рублей в день.\n\n"
                 f"Выполняйте простые задания и получайте реальные деньги.\n\n"
                 f"🔗 **Ваша реферальная ссылка:**\n"
-                f"`https://t.me/{bot.username}?start={ref_code}`\n\n"
+                f"`https://t.me/{bot_info.username}?start={ref_code}`\n\n"
                 f"Приглашайте друзей и получайте бонусы!\n\n"
                 f"👇 Нажмите кнопку ниже, чтобы открыть приложение:"
             )
         
-        # Пробуем отправить фото
         try:
             photo = FSInputFile(IMAGE_PATH)
             await message.answer_photo(
@@ -145,7 +144,6 @@ async def cmd_start(message: types.Message):
             )
         except Exception as e:
             logger.warning(f"Не удалось отправить фото: {e}")
-            # Если фото не найдено, отправляем только текст
             await message.answer(
                 text=caption_text,
                 reply_markup=get_main_keyboard(),
@@ -165,9 +163,12 @@ async def cmd_refs(message: types.Message):
         user_id = str(message.from_user.id)
         ref_count = len(referrals_db.get(user_id, []))
         
+        # Получаем информацию о боте
+        bot_info = await bot.get_me()
+        
         # Создаем реферальную ссылку
         ref_code = f"ref_{user_id}"
-        ref_link = f"https://t.me/{bot.username}?start={ref_code}"
+        ref_link = f"https://t.me/{bot_info.username}?start={ref_code}"
         
         await message.answer(
             f"📊 **Статистика рефералов**\n\n"
@@ -195,16 +196,13 @@ async def handle_web_app_data(message: types.Message):
         logger.info(f"Получены данные из Web App от {user_id}: {action}")
         
         if action == 'check_subscription':
-            # Здесь можно добавить реальную проверку подписки на каналы
             channel = data.get('channel')
-            # Пока просто возвращаем успех
             await message.answer(json.dumps({
                 'status': 'success',
                 'subscribed': True
             }))
             
         elif action == 'get_referrals':
-            # Отправляем количество рефералов
             ref_count = len(referrals_db.get(str(user_id), []))
             await message.answer(json.dumps({
                 'status': 'success',
@@ -212,12 +210,10 @@ async def handle_web_app_data(message: types.Message):
             }))
             
         elif action == 'withdraw':
-            # Обработка вывода средств
             amount = data.get('amount')
             method = data.get('method')
             details = data.get('details')
             
-            # Здесь можно добавить логику вывода
             logger.info(f"Запрос на вывод от {user_id}: {amount} руб, метод: {method}")
             
             await message.answer(json.dumps({
@@ -246,11 +242,14 @@ async def main():
     """
     Главная функция запуска бота
     """
+    # Получаем информацию о боте
+    bot_info = await bot.get_me()
+    
     logger.info(f"Бот запущен!")
     logger.info(f"URL приложения: {APP_URL}")
-    logger.info(f"Username бота: @{bot.username}")
+    logger.info(f"Username бота: @{bot_info.username}")
+    logger.info(f"ID бота: {bot_info.id}")
     
-    # Запускаем поллинг
     try:
         await dp.start_polling(bot)
     except Exception as e:
