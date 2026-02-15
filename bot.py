@@ -9,7 +9,9 @@ from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
-APP_URL = "https://t.me/coolrayhgsbot/app"  # ССЫЛКА НА ПРИЛОЖЕНИЕ
+# ⚠️ ВАЖНО: Здесь должен быть URL вашего приложения на GitHub Pages
+# Пример: "https://ваш-username.github.io/название-репозитория"
+APP_URL = "https://berber-cloud.github.io/"  # ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ URL
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 # ======================================================
 
@@ -80,6 +82,9 @@ async def cmd_start(message: types.Message):
         user = message.from_user
         args = message.text.split()
         
+        # Получаем информацию о боте
+        bot_info = await bot.get_me()
+        
         # Проверяем, есть ли реферальный параметр
         referrer_id = None
         if len(args) > 1 and args[1].startswith('ref_'):
@@ -91,9 +96,6 @@ async def cmd_start(message: types.Message):
             
             if user.id not in referrals_db[referrer_id]:
                 referrals_db[referrer_id].append(user.id)
-                
-                # Получаем информацию о боте для реферальной ссылки
-                bot_info = await bot.get_me()
                 
                 try:
                     await bot.send_message(
@@ -108,9 +110,6 @@ async def cmd_start(message: types.Message):
                     logger.error(f"Не удалось отправить уведомление рефереру: {e}")
         
         time_greeting, display_name = get_user_greeting(user)
-        
-        # Получаем информацию о боте для реферальной ссылки
-        bot_info = await bot.get_me()
         
         if referrer_id:
             caption_text = (
@@ -134,6 +133,7 @@ async def cmd_start(message: types.Message):
                 f"👇 Нажмите кнопку ниже, чтобы открыть приложение:"
             )
         
+        # Пробуем отправить фото
         try:
             photo = FSInputFile(IMAGE_PATH)
             await message.answer_photo(
@@ -142,8 +142,8 @@ async def cmd_start(message: types.Message):
                 reply_markup=get_main_keyboard(),
                 parse_mode=ParseMode.MARKDOWN
             )
-        except Exception as e:
-            logger.warning(f"Не удалось отправить фото: {e}")
+        except FileNotFoundError:
+            logger.warning(f"Файл {IMAGE_PATH} не найден, отправляем только текст")
             await message.answer(
                 text=caption_text,
                 reply_markup=get_main_keyboard(),
@@ -197,6 +197,7 @@ async def handle_web_app_data(message: types.Message):
         
         if action == 'check_subscription':
             channel = data.get('channel')
+            # Здесь нужно реализовать реальную проверку подписки
             await message.answer(json.dumps({
                 'status': 'success',
                 'subscribed': True
@@ -249,6 +250,11 @@ async def main():
     logger.info(f"URL приложения: {APP_URL}")
     logger.info(f"Username бота: @{bot_info.username}")
     logger.info(f"ID бота: {bot_info.id}")
+    
+    # Проверяем, что APP_URL начинается с https://
+    if not APP_URL.startswith('https://'):
+        logger.error("APP_URL должен начинаться с https://")
+        return
     
     try:
         await dp.start_polling(bot)
