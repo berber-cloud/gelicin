@@ -11,7 +11,7 @@ from aiogram.enums import ParseMode
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
 # ⚠️ ВАЖНО: Здесь должен быть URL вашего приложения на GitHub Pages
 # Пример: "https://ваш-username.github.io/название-репозитория"
-APP_URL = "https://berber-cloud.github.io/"  # ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ URL
+APP_URL = " https://berber-cloud.github.io/brzhtrd/"  # ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ URL
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 # ======================================================
 
