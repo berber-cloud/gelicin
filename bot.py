@@ -10,7 +10,7 @@ from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
-APP_URL = "https://coolrayhgs.github.io/tgbot-app"  # ВАШ URL НА GITHUB PAGES
+APP_URL = "https://coolrayhgs.github.io/brzhtrd"  # ВАШ URL НА GITHUB PAGES
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 REDIS_HOST = "localhost"  # ХОСТ REDIS
 REDIS_PORT = 6379  # ПОРТ REDIS
