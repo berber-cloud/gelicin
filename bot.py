@@ -10,7 +10,7 @@ from aiogram.enums import ParseMode
 
 # ================ ВСЕ ПЕРЕМЕННЫЕ ЗДЕСЬ ================
 BOT_TOKEN = "8298712783:AAGGAl5RmMO_PJ3SnN_FGOGdBZpT77FV2p8"  # ВАШ ТОКЕН
-APP_URL = "https://coolrayhgs.github.io/brzhtrd"  # ВАШ URL НА GITHUB PAGES
+APP_URL = "https://coolrayhgs.github.io/brzhtrd/"  # ВАШ URL НА GITHUB PAGES
 IMAGE_PATH = "image.jpg"  # ПУТЬ К ИЗОБРАЖЕНИЮ
 REDIS_HOST = "localhost"  # ХОСТ REDIS
 REDIS_PORT = 6379  # ПОРТ REDIS
@@ -64,11 +64,13 @@ async def get_user_data(user_id: int) -> dict:
         # Создаем нового пользователя
         user_data = {
             'balance': 0,
-            'referrals': [],
-            'referral_count': 0,
-            'completed_tasks': [],
-            'subscribed_channels': [],
-            'created_at': datetime.now().isoformat()
+            'referrals': [],  # Список ID приглашенных пользователей
+            'referral_count': 0,  # Количество рефералов
+            'completed_tasks': [],  # Выполненные задания
+            'subscribed_channels': [],  # Каналы на которые подписан
+            'created_at': datetime.now().isoformat(),
+            'first_seen': datetime.now().isoformat(),  # Первое появление
+            'is_existing_user': False  # Флаг существующего пользователя
         }
         await redis_client.set(key, json.dumps(user_data))
         return user_data
@@ -77,6 +79,11 @@ async def save_user_data(user_id: int, data: dict):
     """Сохранение данных пользователя в Redis"""
     key = f"user:{user_id}"
     await redis_client.set(key, json.dumps(data))
+
+async def check_user_exists(user_id: int) -> bool:
+    """Проверка, существует ли пользователь в базе"""
+    key = f"user:{user_id}"
+    return await redis_client.exists(key)
 
 async def check_subscription(user_id: int, channel: str) -> bool:
     """Проверка подписки пользователя на канал"""
@@ -125,7 +132,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(
                 text="🚀 Начать зарабатывать", 
-                web_app=WebAppInfo(url=APP_URL)
+                web_app=WebAppInfo(url=t.me/coolrayhgsbot/app)
             )]
         ]
     )
@@ -141,61 +148,75 @@ async def cmd_start(message: types.Message):
         # Получаем информацию о боте
         bot_info = await bot.get_me()
         
+        # Проверяем, существует ли пользователь
+        user_exists = await check_user_exists(user.id)
+        
         # Получаем данные пользователя
         user_data = await get_user_data(user.id)
         
-        # Проверяем, есть ли реферальный параметр
-        if len(args) > 1 and args[1].isdigit():
+        # Если пользователь уже существовал, отмечаем это
+        if user_exists:
+            user_data['is_existing_user'] = True
+            await save_user_data(user.id, user_data)
+        
+        # Проверяем, есть ли реферальный параметр и пользователь НОВЫЙ
+        if len(args) > 1 and args[1].isdigit() and not user_exists:
             referrer_id = int(args[1])
-            logger.info(f"Пользователь {user.id} перешел по реферальной ссылке от {referrer_id}")
+            logger.info(f"НОВЫЙ пользователь {user.id} перешел по реферальной ссылке от {referrer_id}")
             
             # Проверяем, что реферер существует и это не сам пользователь
             if referrer_id != user.id:
-                # Получаем данные реферера
-                referrer_data = await get_user_data(referrer_id)
+                # Проверяем, существует ли реферер
+                referrer_exists = await check_user_exists(referrer_id)
                 
-                # Добавляем реферала если его еще нет
-                if user.id not in referrer_data['referrals']:
-                    referrer_data['referrals'].append(user.id)
-                    referrer_data['referral_count'] = len(referrer_data['referrals'])
+                if referrer_exists:
+                    # Получаем данные реферера
+                    referrer_data = await get_user_data(referrer_id)
                     
-                    # Проверяем, достиг ли реферер 20 рефералов
-                    if referrer_data['referral_count'] >= 20 and 'referral_20' not in referrer_data['completed_tasks']:
-                        # Начисляем бонус
-                        referrer_data['balance'] += REFERRAL_BONUS
-                        referrer_data['completed_tasks'].append('referral_20')
+                    # Добавляем реферала если его еще нет
+                    if user.id not in referrer_data['referrals']:
+                        referrer_data['referrals'].append(user.id)
+                        referrer_data['referral_count'] = len(referrer_data['referrals'])
                         
-                        # Сохраняем данные реферера
-                        await save_user_data(referrer_id, referrer_data)
+                        # Проверяем, достиг ли реферер 20 рефералов
+                        if referrer_data['referral_count'] >= 20 and 'referral_20' not in referrer_data['completed_tasks']:
+                            # Начисляем бонус
+                            referrer_data['balance'] += REFERRAL_BONUS
+                            referrer_data['completed_tasks'].append('referral_20')
+                            
+                            # Сохраняем данные реферера
+                            await save_user_data(referrer_id, referrer_data)
+                            
+                            # Уведомляем реферера
+                            try:
+                                await bot.send_message(
+                                    chat_id=referrer_id,
+                                    text=f"🎉 **Поздравляем!**\n\n"
+                                         f"Вы пригласили 20 друзей!\n"
+                                         f"💰 На ваш баланс начислено {REFERRAL_BONUS} ₽\n\n"
+                                         f"Баланс: {referrer_data['balance']} ₽",
+                                    parse_mode=ParseMode.MARKDOWN
+                                )
+                            except Exception as e:
+                                logger.error(f"Не удалось отправить уведомление: {e}")
+                        else:
+                            # Сохраняем данные реферера
+                            await save_user_data(referrer_id, referrer_data)
                         
-                        # Уведомляем реферера
+                        # Уведомляем реферера о новом реферале
                         try:
                             await bot.send_message(
                                 chat_id=referrer_id,
-                                text=f"🎉 **Поздравляем!**\n\n"
-                                     f"Вы пригласили 20 друзей!\n"
-                                     f"💰 На ваш баланс начислено {REFERRAL_BONUS} ₽\n\n"
-                                     f"Баланс: {referrer_data['balance']} ₽",
-                                parse_mode=ParseMode.MARKDOWN
+                                text=f"🎉 По вашей ссылке зарегистрировался новый пользователь!\n"
+                                     f"👤 Имя: {user.first_name}\n"
+                                     f"📊 Всего приглашено: {referrer_data['referral_count']}/20\n\n"
+                                     f"🔗 Ваша ссылка:\n"
+                                     f"https://t.me/{bot_info.username}?start={referrer_id}"
                             )
                         except Exception as e:
                             logger.error(f"Не удалось отправить уведомление: {e}")
-                    else:
-                        # Сохраняем данные реферера
-                        await save_user_data(referrer_id, referrer_data)
-                    
-                    # Уведомляем реферера о новом реферале
-                    try:
-                        await bot.send_message(
-                            chat_id=referrer_id,
-                            text=f"🎉 По вашей ссылке зарегистрировался новый пользователь!\n"
-                                 f"👤 Имя: {user.first_name}\n"
-                                 f"📊 Всего приглашено: {referrer_data['referral_count']}/20\n\n"
-                                 f"🔗 Ваша ссылка:\n"
-                                 f"https://t.me/{bot_info.username}?start={referrer_id}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Не удалось отправить уведомление: {e}")
+                else:
+                    logger.info(f"Реферер {referrer_id} не найден в базе")
         
         time_greeting, display_name = get_user_greeting(user)
         
@@ -205,8 +226,14 @@ async def cmd_start(message: types.Message):
         # Получаем актуальные данные после возможных изменений
         user_data = await get_user_data(user.id)
         
+        # Формируем текст в зависимости от того, новый пользователь или нет
+        if user_exists:
+            welcome_text = f"{time_greeting}, {display_name}! 👋\n\nС возвращением!"
+        else:
+            welcome_text = f"{time_greeting}, {display_name}! 👋\n\nДобро пожаловать!"
+        
         caption_text = (
-            f"{time_greeting}, {display_name}! 👋\n\n"
+            f"{welcome_text}\n\n"
             f"💰 **Ваш баланс:** {user_data['balance']} ₽\n"
             f"👥 **Приглашено друзей:** {user_data['referral_count']}/20\n"
             f"✅ **Выполнено заданий:** {len(user_data['completed_tasks'])}\n\n"
@@ -246,10 +273,26 @@ async def cmd_balance(message: types.Message):
         bot_info = await bot.get_me()
         ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
         
+        # Получаем список рефералов с именами
+        referrals_list = []
+        for ref_id in user_data['referrals']:
+            try:
+                ref_user = await bot.get_chat(ref_id)
+                ref_name = ref_user.first_name or f"ID: {ref_id}"
+                referrals_list.append(f"👤 {ref_name}")
+            except:
+                referrals_list.append(f"👤 Пользователь {ref_id}")
+        
+        referrals_text = "\n".join(referrals_list[:5])  # Показываем только первых 5
+        if len(user_data['referrals']) > 5:
+            referrals_text += f"\n... и еще {len(user_data['referrals']) - 5}"
+        
         await message.answer(
             f"💰 **Ваш баланс:** {user_data['balance']} ₽\n"
             f"👥 **Приглашено друзей:** {user_data['referral_count']}/20\n"
             f"✅ **Выполнено заданий:** {len(user_data['completed_tasks'])}\n\n"
+            f"📋 **Ваши рефералы:**\n"
+            f"{referrals_text if user_data['referrals'] else 'Пока нет рефералов'}\n\n"
             f"🔗 **Ваша реферальная ссылка:**\n"
             f"`{ref_link}`\n\n"
             f"🎯 **До бонуса за рефералов:** {20 - user_data['referral_count']} чел.",
@@ -297,18 +340,21 @@ async def handle_web_app_data(message: types.Message):
                         'status': 'success',
                         'subscribed': True,
                         'bonus': CHANNEL_BONUS,
-                        'new_balance': user_data['balance']
+                        'new_balance': user_data['balance'],
+                        'referrals': user_data['referral_count']
                     }))
                 else:
                     await message.answer(json.dumps({
                         'status': 'success',
                         'subscribed': True,
-                        'already_completed': True
+                        'already_completed': True,
+                        'referrals': user_data['referral_count']
                     }))
             else:
                 await message.answer(json.dumps({
                     'status': 'success',
-                    'subscribed': False
+                    'subscribed': False,
+                    'referrals': user_data['referral_count'] if 'user_data' in locals() else 0
                 }))
         
         elif action == 'get_user_data':
@@ -357,12 +403,14 @@ async def handle_web_app_data(message: types.Message):
                 await message.answer(json.dumps({
                     'status': 'success',
                     'message': 'Запрос на вывод принят. Средства поступят в течение 8 часов',
-                    'new_balance': user_data['balance']
+                    'new_balance': user_data['balance'],
+                    'referrals': user_data['referral_count']
                 }))
             else:
                 await message.answer(json.dumps({
                     'status': 'error',
-                    'message': 'Недостаточно средств. Минимум 1500 ₽'
+                    'message': 'Недостаточно средств. Минимум 1500 ₽',
+                    'referrals': user_data['referral_count']
                 }))
             
     except Exception as e:
@@ -377,7 +425,7 @@ async def handle_all_messages(message: types.Message):
     """Обработчик всех остальных сообщений"""
     await message.answer(
         "Используйте команду /start для начала работы\n"
-        "Или /balance для просмотра баланса"
+        "Или /balance для просмотра баланса и рефералов"
     )
 
 async def main():
